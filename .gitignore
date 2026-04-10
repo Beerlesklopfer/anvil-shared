@@ -1,0 +1,18 @@
+# Build artifacts
+target/
+build/
+*.o
+*.so
+*.a
+*.dylib
+*.dll
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+*~
+
+# OS
+.DS_Store
+Thumbs.db
