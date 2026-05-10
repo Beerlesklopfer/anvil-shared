@@ -15,6 +15,10 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <ctime>
+#include <map>
+#include <mutex>
+#include <string>
 
 /* Debug level: 0=silent, 1=errors, 2=verbose (stats) */
 static int anvil_debug = 0;
@@ -23,6 +27,88 @@ void anvil_set_debug(int level) {
     anvil_debug = level;
     if (level > 0)
         printf("Anvil: debug level set to %d\n", level);
+}
+
+/* ─────────────────────────────────────────────────────────────────── */
+/*  Build-info baked at compile time + ABI-mismatch diagnostics        */
+/* ─────────────────────────────────────────────────────────────────── */
+
+#ifndef ANVIL_WRAPPER_GIT_SHA
+#define ANVIL_WRAPPER_GIT_SHA "unknown"
+#endif
+
+/* The constant is composed of __DATE__ + __TIME__ + " git:<sha>" — every
+ * caller's binary picks up the values at THAT binary's compile, so two
+ * processes that share an Anvil topic can compare strings to spot a
+ * source-tree mismatch instantly.
+ */
+static const char *kAnvilWrapperBuildInfo =
+    __DATE__ " " __TIME__ " git:" ANVIL_WRAPPER_GIT_SHA;
+
+const char *anvil_wrapper_build_info(void) {
+    return kAnvilWrapperBuildInfo;
+}
+
+/* Rate-limit the verbose ABI-mismatch diagnostic so a tight retry loop
+ * in the calling code cannot spam syslog. Keyed by topic name, suppress
+ * for 60 s after the last log.
+ */
+namespace {
+
+std::mutex g_mismatch_log_mtx;
+std::map<std::string, time_t> g_mismatch_last_log;
+
+void log_abi_mismatch(const char *kind /* "pub" or "sub" */,
+                       const char *service_name) {
+    const time_t now = time(NULL);
+    {
+        std::lock_guard<std::mutex> lk(g_mismatch_log_mtx);
+        const time_t last = g_mismatch_last_log[service_name];
+        if (now - last < 60) {
+            /* Already logged for this topic in the last minute — silent. */
+            g_mismatch_last_log[service_name] = now;
+            return;
+        }
+        g_mismatch_last_log[service_name] = now;
+    }
+    fprintf(stderr,
+        "Anvil: ABI mismatch on '%s' (%s side) — this process built from "
+        "anvil_wrapper at [%s].\n"
+        "       Another process is using a DIFFERENT struct layout for the "
+        "same topic.\n"
+        "       Common causes:\n"
+        "         1. anvild + tongs-* deployed older than the running "
+        "forgeiec-plc (or vice versa).\n"
+        "         2. shared/anvil_wrapper edited but only some binaries "
+        "rebuilt.\n"
+        "       Fix:\n"
+        "         cd <project>/build && make anvild tongs-modbustcp -j$(nproc)\n"
+        "         sudo ./deploy.sh anvild       # restarts anvild + tongs\n"
+        "         # forgeiec-plc auto-rebuilds on next project deploy/restart\n"
+        "       Compare anvil_wrapper_build_info() between processes to "
+        "confirm.\n"
+        "       (Suppressing further '%s' mismatch logs for 60 s.)\n",
+        service_name, kind, kAnvilWrapperBuildInfo, service_name);
+}
+
+}  // namespace
+
+int anvil_get_mismatch_topics(char *buf, size_t buflen) {
+    std::lock_guard<std::mutex> lk(g_mismatch_log_mtx);
+    if (buf && buflen > 0) {
+        std::string out;
+        out.reserve(g_mismatch_last_log.size() * 24);
+        bool first = true;
+        for (const auto &kv : g_mismatch_last_log) {
+            if (!first) out += ',';
+            first = false;
+            out += kv.first;
+        }
+        const size_t n = std::min(out.size(), buflen - 1);
+        std::memcpy(buf, out.data(), n);
+        buf[n] = '\0';
+    }
+    return (int)g_mismatch_last_log.size();
 }
 
 #ifdef _anvil_src
@@ -237,11 +323,12 @@ anvil_pub_t anvil_pub_create(anvil_node_t node, const char *service_name,
         return p;
 
     /* O_INCOMPATIBLE_TYPES (3): stale service with different payload size.
-     * Clean dead nodes and retry once. */
+     * Clean dead nodes and retry once. The diagnostic message is rate-
+     * limited (once per topic per 60 s) and includes anvil_wrapper build
+     * info so users can spot version skew at a glance. */
     const int O_INCOMPATIBLE_TYPES = (int)iox2_pub_sub_open_or_create_error_e_O_INCOMPATIBLE_TYPES;
     if (ret == O_INCOMPATIBLE_TYPES) {
-        printf("Anvil: pub '%s' incompatible types — cleaning dead nodes and retrying\n",
-               service_name);
+        log_abi_mismatch("pub", service_name);
         anvil_cleanup_dead_nodes();
 
         p->handle = NULL;
@@ -368,11 +455,11 @@ anvil_sub_t anvil_sub_create(anvil_node_t node, const char *service_name,
         return s;
 
     /* O_INCOMPATIBLE_TYPES (3): stale service with different payload size.
-     * Clean dead nodes and retry once. */
+     * Clean dead nodes and retry once. Diagnostic-on-mismatch goes through
+     * log_abi_mismatch (rate-limited + carries build info). */
     const int O_INCOMPATIBLE_TYPES = (int)iox2_pub_sub_open_or_create_error_e_O_INCOMPATIBLE_TYPES;
     if (ret == O_INCOMPATIBLE_TYPES) {
-        printf("Anvil: sub '%s' incompatible types — cleaning dead nodes and retrying\n",
-               service_name);
+        log_abi_mismatch("sub", service_name);
         anvil_cleanup_dead_nodes();
 
         s->handle = NULL;
