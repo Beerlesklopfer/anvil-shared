@@ -80,6 +80,40 @@ int anvil_receive(anvil_sub_t sub, void *buf, size_t size);
  */
 void anvil_set_debug(int level);
 
+/*
+ * Build-info string baked at wrapper compile time.
+ *
+ * Format: "<date> <time>[ git:<sha>]" — date+time are __DATE__/__TIME__
+ * from the C preprocessor; the optional " git:<sha>" suffix is set when
+ * the build environment defined ANVIL_WRAPPER_GIT_SHA. Always non-NULL,
+ * static-storage-duration; safe to log.
+ *
+ * Use this when comparing two processes (anvild, forgeiec-plc, tongs-*)
+ * that share an Anvil topic — if the strings differ, the binaries were
+ * built from different `anvil_wrapper` revisions and ABI compat is not
+ * guaranteed (see anvil_wrapper-version-mismatch in the diagnostic
+ * messages emitted on O_INCOMPATIBLE_TYPES).
+ */
+const char *anvil_wrapper_build_info(void);
+
+/*
+ * Snapshot the set of topic names that have triggered an
+ * O_INCOMPATIBLE_TYPES diagnostic since process start, comma-separated,
+ * into `buf` (zero-terminated, truncated to fit `buflen-1` bytes).
+ * Pass buf=NULL/buflen=0 to query the count without copying.
+ *
+ * Returns: number of distinct topics (NOT bytes written). Safe to call
+ * from multiple threads — guarded by an internal mutex shared with the
+ * diagnostic logger so the snapshot is consistent with what was logged.
+ *
+ * The set is monotonic for the process lifetime: entries are added on
+ * the first mismatch per topic and never removed. This is intentional —
+ * once an ABI mismatch has been observed, the operator must rebuild and
+ * redeploy; auto-clearing would mask the problem after a transient retry
+ * succeeds against the new (still-incompatible) layout.
+ */
+int anvil_get_mismatch_topics(char *buf, size_t buflen);
+
 #ifdef __cplusplus
 }
 #endif
