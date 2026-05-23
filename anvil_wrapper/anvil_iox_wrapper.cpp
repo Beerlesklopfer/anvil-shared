@@ -81,7 +81,11 @@ void log_abi_mismatch(const char *kind /* "pub" or "sub" */,
         "forgeiec-plc (or vice versa).\n"
         "         2. shared/anvil_wrapper edited but only some binaries "
         "rebuilt.\n"
-        "       Fix:\n"
+        "       Fix (production / Debian package install):\n"
+        "         sudo apt update && sudo apt install --only-upgrade \\\n"
+        "             forgeiec-studio anvild tongs-modbustcp\n"
+        "         # then re-deploy the project from the editor.\n"
+        "       Fix (local development build):\n"
         "         cd <project>/build && make anvild tongs-modbustcp -j$(nproc)\n"
         "         sudo ./deploy.sh anvild       # restarts anvild + tongs\n"
         "         # forgeiec-plc auto-rebuilds on next project deploy/restart\n"
@@ -147,32 +151,35 @@ static int anvil_dead_nodes_cleaned = 0;
 
 static enum iox2_callback_progression_e
 anvil_cleanup_dead_node_cb(enum iox2_node_state_e state,
-                           iox2_node_id_ptr node_id,
+                           iox2_unique_node_id_ptr node_id,
                            const char * /*executable*/,
                            iox2_node_name_ptr /*node_name*/,
                            iox2_config_ptr config,
                            iox2_callback_context /*ctx*/)
 {
     if (state == iox2_node_state_e_DEAD && node_id && config) {
-        bool success = false;
-        iox2_node_id_h id_handle = NULL;
+        iox2_unique_node_id_h id_handle = NULL;
         iox2_config_h cfg_handle = NULL;
 
         /* Clone node ID and config into owning handles */
-        iox2_node_id_clone_from_ptr(NULL, node_id, &id_handle);
+        iox2_unique_node_id_clone_from_ptr(NULL, node_id, &id_handle);
         iox2_config_from_ptr(config, NULL, &cfg_handle);
 
         if (id_handle && cfg_handle) {
             iox2_config_h_ref cfg_ref = &cfg_handle;
-            int ret = iox2_dead_node_remove_stale_resources(
+            /* iceoryx2 v0.9.0: NodeId -> UniqueNodeId rename (PR #1534);
+             * iox2_dead_node_remove_stale_resources wurde umbenannt zu
+             * _try_ Variante, success-out-Parameter ist weggefallen
+             * (Return-Code IOX2_OK signalisiert Erfolg). */
+            int ret = iox2_dead_node_try_remove_stale_resources(
                 iox2_service_type_e_IPC,
-                &id_handle, cfg_ref, &success);
-            if (ret == IOX2_OK && success) {
+                &id_handle, cfg_ref);
+            if (ret == IOX2_OK) {
                 anvil_dead_nodes_cleaned++;
                 printf("Anvil: Cleaned stale resources from dead node\n");
             }
         }
-        if (id_handle)  iox2_node_id_drop(id_handle);
+        if (id_handle)  iox2_unique_node_id_drop(id_handle);
         if (cfg_handle) iox2_config_drop(cfg_handle);
     }
     return iox2_callback_progression_e_CONTINUE;
