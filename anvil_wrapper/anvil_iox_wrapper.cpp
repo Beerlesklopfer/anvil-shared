@@ -26,7 +26,7 @@ static int anvil_debug = 0;
 void anvil_set_debug(int level) {
     anvil_debug = level;
     if (level > 0)
-        printf("Anvil: debug level set to %d\n", level);
+        fprintf(stderr, "Anvil: debug level set to %d\n", level);
 }
 
 /* ─────────────────────────────────────────────────────────────────── */
@@ -176,7 +176,7 @@ anvil_cleanup_dead_node_cb(enum iox2_node_state_e state,
                 &id_handle, cfg_ref);
             if (ret == IOX2_OK) {
                 anvil_dead_nodes_cleaned++;
-                printf("Anvil: Cleaned stale resources from dead node\n");
+                fprintf(stderr, "Anvil: Cleaned stale resources from dead node\n");
             }
         }
         if (id_handle)  iox2_unique_node_id_drop(id_handle);
@@ -195,9 +195,9 @@ static void anvil_cleanup_dead_nodes(void) {
     int ret = iox2_node_list(iox2_service_type_e_IPC, cfg,
                              anvil_cleanup_dead_node_cb, NULL);
     if (ret != IOX2_OK && anvil_debug >= 1)
-        printf("Anvil: iox2_node_list failed (err=%d)\n", ret);
+        fprintf(stderr, "Anvil: iox2_node_list failed (err=%d)\n", ret);
     if (anvil_dead_nodes_cleaned > 0)
-        printf("Anvil: Cleaned %d dead node(s)\n", anvil_dead_nodes_cleaned);
+        fprintf(stderr, "Anvil: Cleaned %d dead node(s)\n", anvil_dead_nodes_cleaned);
 }
 
 /* --- Node --- */
@@ -231,7 +231,7 @@ anvil_node_t anvil_node_create(const char *name) {
 
     if (ret != IOX2_OK) {
         if (anvil_debug >= 1)
-            printf("Anvil: iox2_node_builder_create failed (err=%d)\n", ret);
+            fprintf(stderr, "Anvil: iox2_node_builder_create failed (err=%d)\n", ret);
         free(n);
         return NULL;
     }
@@ -264,7 +264,7 @@ static int anvil_pub_try_create(anvil_node_t node, anvil_pub_t p,
     if (iox2_service_name_new(NULL, service_name, strlen(service_name),
                               &svc_name) != IOX2_OK) {
         if (anvil_debug >= 1)
-            printf("Anvil: Failed to create service name '%s'\n", service_name);
+            fprintf(stderr, "Anvil: Failed to create service name '%s'\n", service_name);
         return -1;
     }
 
@@ -276,7 +276,7 @@ static int anvil_pub_try_create(anvil_node_t node, anvil_pub_t p,
 
     if (!svc_builder) {
         if (anvil_debug >= 1)
-            printf("Anvil: Failed to create service builder for '%s'\n", service_name);
+            fprintf(stderr, "Anvil: Failed to create service builder for '%s'\n", service_name);
         return -1;
     }
 
@@ -293,7 +293,7 @@ static int anvil_pub_try_create(anvil_node_t node, anvil_pub_t p,
         payload_size, 1);
 
     if (anvil_debug >= 2)
-        printf("Anvil: pub service '%s' payload_size=%zu\n", service_name, payload_size);
+        fprintf(stderr, "Anvil: pub service '%s' payload_size=%zu\n", service_name, payload_size);
 
     iox2_port_factory_pub_sub_h pubsub = NULL;
     int ret = iox2_service_builder_pub_sub_open_or_create(
@@ -309,7 +309,7 @@ static int anvil_pub_try_create(anvil_node_t node, anvil_pub_t p,
         pub_builder, NULL, &p->handle);
     if (ret != IOX2_OK || !p->handle) {
         if (anvil_debug >= 1)
-            printf("Anvil: Failed to create publisher for '%s' (err=%d)\n",
+            fprintf(stderr, "Anvil: Failed to create publisher for '%s' (err=%d)\n",
                    service_name, ret);
         return ret;
     }
@@ -345,7 +345,7 @@ anvil_pub_t anvil_pub_create(anvil_node_t node, const char *service_name,
     }
 
     if (anvil_debug >= 1)
-        printf("Anvil: Failed to open/create pub-sub service '%s' (err=%d)\n",
+        fprintf(stderr, "Anvil: Failed to open/create pub-sub service '%s' (err=%d)\n",
                service_name, ret);
     free(p);
     return NULL;
@@ -376,12 +376,12 @@ int anvil_publish(anvil_pub_t pub, const void *data, size_t size) {
     if (ret != IOX2_OK) {
         anvil_pub_fail++;
         if (anvil_debug >= 1 && (anvil_pub_fail <= 5 || anvil_pub_fail % 1000 == 0))
-            printf("Anvil: publish failed (ret=%d, count=%lu)\n", ret, anvil_pub_fail);
+            fprintf(stderr, "Anvil: publish failed (ret=%d, count=%lu)\n", ret, anvil_pub_fail);
         return -1;
     }
     anvil_pub_ok++;
     if (anvil_debug >= 2 && (anvil_pub_ok == 1 || anvil_pub_ok % 10000 == 0))
-        printf("Anvil: publish ok (recipients=%zu, total=%lu)\n", recipients, anvil_pub_ok);
+        fprintf(stderr, "Anvil: publish ok (recipients=%zu, total=%lu)\n", recipients, anvil_pub_ok);
     return 0;
 }
 
@@ -398,7 +398,7 @@ static int anvil_sub_try_create(anvil_node_t node, anvil_sub_t s,
     if (iox2_service_name_new(NULL, service_name, strlen(service_name),
                               &svc_name) != IOX2_OK) {
         if (anvil_debug >= 1)
-            printf("Anvil: Failed to create service name '%s'\n", service_name);
+            fprintf(stderr, "Anvil: Failed to create service name '%s'\n", service_name);
         return -1;
     }
 
@@ -410,7 +410,7 @@ static int anvil_sub_try_create(anvil_node_t node, anvil_sub_t s,
 
     if (!svc_builder) {
         if (anvil_debug >= 1)
-            printf("Anvil: Failed to create service builder for '%s'\n", service_name);
+            fprintf(stderr, "Anvil: Failed to create service builder for '%s'\n", service_name);
         return -1;
     }
 
@@ -425,7 +425,7 @@ static int anvil_sub_try_create(anvil_node_t node, anvil_sub_t s,
         payload_size, 1);
 
     if (anvil_debug >= 2)
-        printf("Anvil: sub service '%s' payload_size=%zu\n", service_name, payload_size);
+        fprintf(stderr, "Anvil: sub service '%s' payload_size=%zu\n", service_name, payload_size);
 
     iox2_port_factory_pub_sub_h pubsub = NULL;
     int ret = iox2_service_builder_pub_sub_open_or_create(
@@ -441,7 +441,7 @@ static int anvil_sub_try_create(anvil_node_t node, anvil_sub_t s,
         sub_builder, NULL, &s->handle);
     if (ret != IOX2_OK || !s->handle) {
         if (anvil_debug >= 1)
-            printf("Anvil: Failed to create subscriber for '%s' (err=%d)\n",
+            fprintf(stderr, "Anvil: Failed to create subscriber for '%s' (err=%d)\n",
                    service_name, ret);
         return ret;
     }
@@ -476,7 +476,7 @@ anvil_sub_t anvil_sub_create(anvil_node_t node, const char *service_name,
     }
 
     if (anvil_debug >= 1)
-        printf("Anvil: Failed to open/create pub-sub service '%s' (err=%d)\n",
+        fprintf(stderr, "Anvil: Failed to open/create pub-sub service '%s' (err=%d)\n",
                service_name, ret);
     free(s);
     return NULL;
@@ -499,7 +499,7 @@ int anvil_receive(anvil_sub_t sub, void *buf, size_t size) {
     anvil_sub_count++;
     if (ret != IOX2_OK) {
         if (anvil_debug >= 2 && (anvil_sub_count <= 5 || anvil_sub_count % 100000 == 0))
-            printf("Anvil: receive ret=%d (not IOX2_OK=%d, calls=%lu)\n",
+            fprintf(stderr, "Anvil: receive ret=%d (not IOX2_OK=%d, calls=%lu)\n",
                    ret, IOX2_OK, anvil_sub_count);
         return -1;
     }
@@ -510,7 +510,7 @@ int anvil_receive(anvil_sub_t sub, void *buf, size_t size) {
 
     anvil_sub_ok++;
     if (anvil_debug >= 2 && (anvil_sub_ok == 1 || anvil_sub_ok % 10000 == 0))
-        printf("Anvil: receive ok (total=%lu)\n", anvil_sub_ok);
+        fprintf(stderr, "Anvil: receive ok (total=%lu)\n", anvil_sub_ok);
 
     /* Copy payload into caller's buffer */
     const void *payload = NULL;
