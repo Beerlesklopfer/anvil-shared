@@ -8,7 +8,12 @@
  * IceOryx2 installed.
  *
  * Copyright (C) 2025-2026 Blacksmith (blacksmith@forgeiec.io)
- * Licensed under GPL v3 (same as OpenPLC v3)
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * Apache-2.0 (not GPL): this wrapper is compiled into the generated PLC
+ * runtime binary, so it ships in the Apache-licensed forgeiec-runtime
+ * package — generated POU code must stay redistributable under arbitrary
+ * terms, free of copyleft.
  */
 
 #include "anvil_iox_wrapper.h"

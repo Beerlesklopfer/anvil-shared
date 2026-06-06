@@ -1,6 +1,8 @@
 // Copyright 2025-2026 Blacksmith (blacksmith@forgeiec.io)
 // Part of the Anvil IPC transport layer for ForgeIEC / OpenPLC v3.
-// Licensed under the GNU General Public License v3.
+// SPDX-License-Identifier: Apache-2.0
+// Apache-2.0 (not GPL): compiled into the generated PLC runtime binary
+// (forgeiec-runtime), so it must stay free of copyleft.
 
 #ifndef I_ANVIL_DATA_SINK_H
 #define I_ANVIL_DATA_SINK_H
