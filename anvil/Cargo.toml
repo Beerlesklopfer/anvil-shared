@@ -1,0 +1,31 @@
+# Anvil — plain-Rust IPC transport (iceoryx2 0.9) mit stabiler C-ABI.
+#
+# Ersetzt die historische C++-`anvil_iox_wrapper.cpp` auf der iceoryx2-C-FFI
+# 0.8: EINE iceoryx2-Version + EIN ABI ueber Runtime (forgeiec_plc), anvild und
+# Hearth — alle auf 0.9 Rust. Das Wire-Layout bleibt identisch (pub/sub auf
+# ipc::Service, Payload-Type-Details "Anvil"/FixedSize(size,1), user-header ()),
+# damit 0.9-Peers verbinden. Die Crate exportiert die EXAKT gleichen 11
+# C-Funktionen wie anvil_iox_wrapper.h, sodass der generierte C++-Runtime nur
+# `-lanvil` statt der .cpp+C-FFI linkt.
+[package]
+name = "anvil"
+version = "0.9.0"
+edition = "2021"
+description = "Anvil — plain-Rust IPC transport (iceoryx2 0.9) with the stable C ABI for the ForgeIEC PLC runtime"
+license = "Apache-2.0"
+authors = ["Blacksmith <blacksmith@forgeiec.io>"]
+
+[lib]
+name = "anvil"
+# staticlib: der generierte C++-Runtime linkt libanvil.a (-lanvil) statt der
+# anvil_iox_wrapper.cpp. rlib: anvild/Hearth koennen dieselbe Crate direkt als
+# Rust-Abhaengigkeit nutzen (eine Quelle fuer das Wire-Kontrakt).
+crate-type = ["staticlib", "rlib"]
+
+[dependencies]
+# DIESELBE iceoryx2-Version wie Hearth (0.9.x) — das ist der ganze Sinn:
+# wire-/ABI-konsistent ueber alle SHM-Peers. NICHT auf 0.8 zurueckfallen.
+iceoryx2 = "0.9"
+# TypeDetail wird via serde gepatcht (type_name "Anvil" + size), weil dessen
+# Felder pub(crate) sind — exakt wie in Hearths bridges/anvil.rs.
+serde_json = "1"
