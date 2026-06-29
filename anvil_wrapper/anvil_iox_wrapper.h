@@ -21,6 +21,18 @@
 #define ANVIL_IOX_WRAPPER_H
 
 #include <stddef.h>
+#include <stdint.h>
+
+/*
+ * Anvil IPC ABI contract version — the single C/C++ source of truth.
+ *
+ * MUST stay in lockstep with `ANVIL_ABI_VERSION` in the Rust libanvil
+ * (anvil-server/shared/anvil/src/lib.rs). Bump on ANY incompatible change to
+ * the topic payload layout or the anvil_* C-ABI below. The editor compares the
+ * value its bundled libanvil reports (via anvil_abi_version()) against what
+ * anvild announces in the gRPC handshake and warns proactively on a mismatch.
+ */
+#define ANVIL_ABI_VERSION 1u
 
 #ifdef __cplusplus
 extern "C" {
@@ -100,6 +112,16 @@ void anvil_set_debug(int level);
  * messages emitted on O_INCOMPATIBLE_TYPES).
  */
 const char *anvil_wrapper_build_info(void);
+
+/*
+ * The Anvil IPC ABI contract version this binary speaks (== ANVIL_ABI_VERSION
+ * at its compile time). Deliberate compatibility number — bumped by hand on an
+ * incompatible bus/C-ABI change, NOT a build timestamp. The editor compares the
+ * value its bundled libanvil returns against the one anvild announces in the
+ * handshake and warns proactively on divergence. Always non-zero for a real
+ * transport; a transport-less stub may report 0 ("unknown — skip the check").
+ */
+uint32_t anvil_abi_version(void);
 
 /*
  * Snapshot the set of topic names that have triggered an

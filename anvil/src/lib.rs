@@ -188,6 +188,29 @@ pub extern "C" fn anvil_set_debug(level: c_int) {
     }
 }
 
+/// The Anvil IPC **ABI contract version**. Bump this BY HAND whenever the
+/// on-the-wire topic layout or the C-ABI changes incompatibly — i.e. anything
+/// that would make a peer built against an older value fail to share the bus:
+/// the `"Anvil"` payload `TypeDetail` shape, the service-name → hash mapping,
+/// or the signatures of the `anvil_*` functions below.
+///
+/// Unlike `anvil_wrapper_build_info` (a build-time *identity* string, useful
+/// for logs) this is a deliberate *compatibility* number. The editor reports
+/// it from the `libanvil.a` it bundles and compares against the value anvild
+/// announces in the gRPC handshake — a divergence is surfaced proactively at
+/// connect, before any topic actually collides at runtime.
+///
+/// MUST stay in lockstep with the `ANVIL_ABI_VERSION` macro in
+/// `anvil_iox_wrapper.h` (the C/C++ consumers' source of truth).
+pub const ANVIL_ABI_VERSION: u32 = 1;
+
+/// The ABI contract version (see [`ANVIL_ABI_VERSION`]). Always defined — needs
+/// no iceoryx2 — so even a transport-less peer can answer the handshake.
+#[no_mangle]
+pub extern "C" fn anvil_abi_version() -> u32 {
+    ANVIL_ABI_VERSION
+}
+
 fn build_info_str() -> &'static str {
     // Version + git sha (set via ANVIL_WRAPPER_GIT_SHA at build time, else
     // "unknown"). Two processes sharing a topic compare these to spot skew.
