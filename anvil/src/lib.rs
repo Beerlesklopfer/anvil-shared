@@ -183,6 +183,9 @@ fn open_anvil_service(
 #[no_mangle]
 pub extern "C" fn anvil_set_debug(level: c_int) {
     ANVIL_DEBUG.store(level, Ordering::Relaxed);
+    // One knob: ANVIL_DEBUG also drives the iceoryx2 log level so a single
+    // `--anvil-debug 2` surfaces iceoryx2's own `fail!` cause messages.
+    set_log_level(iox_level_for_debug(level));
     if level > 0 {
         eprintln!("Anvil: debug level set to {level}");
     }
@@ -209,6 +212,50 @@ pub const ANVIL_ABI_VERSION: u32 = 1;
 #[no_mangle]
 pub extern "C" fn anvil_abi_version() -> u32 {
     ANVIL_ABI_VERSION
+}
+
+// ─── iceoryx2 log-level control (makes the InternalError black box visible) ──
+//
+// iceoryx2 logs the REAL cause of a NodeCreationFailure (e.g.
+// DynamicStorageOpenError(VersionMismatch)) via its `fail!` macro — but at
+// TRACE, while the default level is INFO, and the IOX2_LOG_LEVEL env var only
+// takes effect once an application calls set_log_level_from_env_or_default().
+// Neither anvild nor its peers did that, so the cause stayed invisible (see the
+// anvil_local bring-up post-mortem). These functions let anvild flip the iceoryx2
+// log level — at startup from the env, and live via the editor/MCP.
+
+/// Map an Anvil debug level (0..=2, as used by ANVIL_DEBUG / `--anvil-debug`)
+/// onto an iceoryx2 log level and apply it. One knob raises BOTH Anvil's own
+/// diagnostics and iceoryx2's internal logging.
+fn iox_level_for_debug(level: c_int) -> LogLevel {
+    match level {
+        i if i <= 0 => LogLevel::Warn,
+        1 => LogLevel::Info,
+        2 => LogLevel::Debug,
+        _ => LogLevel::Trace,
+    }
+}
+
+/// Apply the iceoryx2 log level from the `IOX2_LOG_LEVEL` env var (or iceoryx2's
+/// default if unset). anvild calls this at startup so `IOX2_LOG_LEVEL=trace`
+/// actually surfaces iceoryx2's `fail!` cause messages.
+#[no_mangle]
+pub extern "C" fn anvil_set_log_level_from_env() {
+    set_log_level_from_env_or_default();
+}
+
+/// Set the iceoryx2 log level explicitly (0=Warn .. 4=Trace). Drives the live
+/// editor/MCP control (`anvil_set_log_level`). Out-of-range clamps to Trace.
+#[no_mangle]
+pub extern "C" fn anvil_set_log_level(level: c_int) {
+    let lvl = match level {
+        i if i <= 0 => LogLevel::Warn,
+        1 => LogLevel::Info,
+        2 => LogLevel::Debug,
+        3 => LogLevel::Trace,
+        _ => LogLevel::Trace,
+    };
+    set_log_level(lvl);
 }
 
 fn build_info_str() -> &'static str {

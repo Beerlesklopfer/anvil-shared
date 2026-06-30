@@ -98,6 +98,21 @@ int anvil_receive(anvil_sub_t sub, void *buf, size_t size);
 void anvil_set_debug(int level);
 
 /*
+ * iceoryx2 log-level control. iceoryx2 logs the REAL cause behind a
+ * NodeCreationFailure::InternalError (e.g. DynamicStorageOpenError(
+ * VersionMismatch)) via its own logger — but at TRACE, and IOX2_LOG_LEVEL only
+ * takes effect once an app opts in. These let anvild surface those causes:
+ *   - anvil_set_log_level_from_env(): apply IOX2_LOG_LEVEL (or default). anvild
+ *     calls this at startup so `IOX2_LOG_LEVEL=trace` works.
+ *   - anvil_set_log_level(level): set explicitly (0=Warn,1=Info,2=Debug,3=Trace)
+ *     — drives the live editor/MCP control.
+ * anvil_set_debug() additionally maps its level onto the iceoryx2 log level, so
+ * one knob raises both layers.
+ */
+void anvil_set_log_level_from_env(void);
+void anvil_set_log_level(int level);
+
+/*
  * Build-info string baked at wrapper compile time.
  *
  * Format: "<date> <time>[ git:<sha>]" — date+time are __DATE__/__TIME__
