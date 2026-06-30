@@ -23,9 +23,13 @@ name = "anvil"
 crate-type = ["staticlib", "rlib"]
 
 [dependencies]
-# DIESELBE iceoryx2-Version wie Hearth (0.9.x) — das ist der ganze Sinn:
-# wire-/ABI-konsistent ueber alle SHM-Peers. NICHT auf 0.8 zurueckfallen.
-iceoryx2 = "0.9"
+# DIESELBE iceoryx2-Version wie Hearth — das ist der ganze Sinn: wire-/ABI-
+# konsistent ueber alle SHM-Peers. EXACT-PIN (=0.9.2), NICHT "0.9": iceoryx2
+# stempelt die Version in jedes DynamicStorage-Segment und verweigert das
+# Oeffnen ueber Versionsgrenzen (pre-1.0 = jeder Patch breaking). Floatet eine
+# Seite z.B. auf 0.9.3, kann der andere Peer das global_mgmt nicht mehr oeffnen
+# -> NodeCreationFailure::InternalError. Hearth ist auf denselben Pin gesetzt.
+iceoryx2 = "=0.9.2"
 # TypeDetail wird via serde gepatcht (type_name "Anvil" + size), weil dessen
 # Felder pub(crate) sind — exakt wie in Hearths bridges/anvil.rs.
 serde_json = "1"
