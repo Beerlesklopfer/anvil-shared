@@ -304,6 +304,14 @@ pub extern "C" fn anvil_get_mismatch_topics(buf: *mut c_char, buflen: usize) -> 
 // ─── C ABI: node ────────────────────────────────────────────────────────────
 
 /// Create an iceoryx2 node. Returns NULL on failure.
+///
+/// Root-Path: NICHT hier im Code gesetzt. Seit dem §8-Amendment
+/// (write-gate-2026-07-02.md) laden ALLE Bus-Peers (anvild, forgeiec_plc,
+/// hearth, tongs) den iceoryx2-Root aus einer maschinen-globalen `iceoryx2.toml`
+/// (`[global] root-path=...`), die der Installer VOR dem Service-Start an den
+/// OS-globalen Config-Pfad legt — Windows `C:\ProgramData\iceoryx2`, Linux/macOS
+/// `/etc/iceoryx2`. Ein libanvil-Code-Override erreichte hearth nicht (hearth
+/// nutzt iceoryx2 direkt); der config-file-Weg deckt alle Peers ohne Code.
 #[no_mangle]
 pub extern "C" fn anvil_node_create(name: *const c_char) -> *mut NodeHandle {
     // Best-effort: reap stale resources of dead nodes so a recompiled PLC with
