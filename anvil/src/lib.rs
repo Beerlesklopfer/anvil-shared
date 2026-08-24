@@ -397,6 +397,10 @@ pub extern "C" fn anvil_pub_destroy(pub_: *mut PubHandle) {
 }
 
 /// Publish `size` bytes from `data`. Returns 0 on success, -1 on failure.
+///
+/// `size` MUSS der `payload_size` entsprechen, mit der der Dienst angelegt
+/// wurde. Ist es groesser, wird NICHT abgeschnitten, sondern abgelehnt —
+/// siehe unten.
 #[no_mangle]
 pub extern "C" fn anvil_publish(pub_: *mut PubHandle, data: *const c_void, size: usize) -> c_int {
     if pub_.is_null() || data.is_null() || size == 0 {
@@ -416,9 +420,41 @@ pub extern "C" fn anvil_publish(pub_: *mut PubHandle, data: *const c_void, size:
         }
     };
     let dst = sample.payload_mut();
-    let n = size.min(dst.len());
+
+    // Frueher stand hier `size.min(dst.len())`: passte die Nutzlast nicht,
+    // wurde der Rest STILL weggeworfen und `send()` meldete trotzdem Erfolg.
+    // Bei einem gepackten Struct fiel das kaum auf, weil die Groesse fest
+    // ist. Sobald ueber diesen Weg etwas Laengenvariables faehrt — JSON, ein
+    // Diagnosedokument — ist es toedlich: der Empfaenger bekommt ein mitten
+    // im Satz abgeschnittenes Dokument, sein Parser scheitert, und die
+    // QUELLE meldet, alles sei gut gegangen. Ein Werkzeug, das schweigend
+    // Daten verliert, ist schlimmer als eines, das scheitert.
+    if size > dst.len() {
+        if debug() >= 1 {
+            eprintln!(
+                "Anvil: publish rejected — {size} bytes do not fit the \
+                 service payload of {} bytes. NOTHING was sent. The service \
+                 type is fixed-size (TypeVariant::FixedSize); its size is \
+                 part of the type identity and cannot grow per sample.",
+                dst.len()
+            );
+        }
+        return -1;
+    }
+    // Kuerzer als die Nutzlast ist erlaubt, aber verdaechtig: der geliehene
+    // Puffer ist nicht zwingend genullt, der Schwanz traegt also womoeglich
+    // alten Inhalt. Wer weniger sendet, muss selbst ein Laengenfeld fuehren
+    // (Vorbild: ConfigMessage.payload_len).
+    if size < dst.len() && debug() >= 2 {
+        eprintln!(
+            "Anvil: publish of {size} bytes into a {}-byte payload — the \
+             remaining {} bytes keep whatever was in the loaned sample.",
+            dst.len(),
+            dst.len() - size
+        );
+    }
     unsafe {
-        ptr::copy_nonoverlapping(data as *const u8, dst.as_mut_ptr() as *mut u8, n);
+        ptr::copy_nonoverlapping(data as *const u8, dst.as_mut_ptr() as *mut u8, size);
     }
     let sample = unsafe { sample.assume_init() };
     match sample.send() {
@@ -502,5 +538,62 @@ pub extern "C" fn anvil_receive(sub: *mut SubHandle, buf: *mut c_void, size: usi
             0
         }
         _ => -1,
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Tests
+// ═══════════════════════════════════════════════════════════════════════
+
+#[cfg(test)]
+mod publish_size_tests {
+    use super::*;
+    use std::ffi::CString;
+
+    /// Eine zu grosse Nutzlast wird ABGELEHNT, nicht abgeschnitten.
+    ///
+    /// Bis 2026-08-25 stand hier `size.min(dst.len())`: der Rest fiel still
+    /// weg und `send()` meldete 0 = Erfolg. Dieser Test ist die Gegenprobe,
+    /// die es damals nicht gab — er wird rot, sobald jemand das Abschneiden
+    /// zurueckbaut.
+    #[test]
+    #[ignore = "braucht eine funktionierende iceoryx2-Umgebung. Hier scheitert \
+                anvil_node_create mit InternalError (fremde Registry, \
+                blacksmith-eigene Segmente in /dev/shm). Lauf: \
+                cargo test -p anvil -- --ignored"]
+    fn oversized_publish_is_rejected_not_truncated() {
+        anvil_set_debug(1);   // sonst schweigt der Fehlerpfad
+        let node_name = CString::new("anvil-test-oversize").unwrap();
+        let node = anvil_node_create(node_name.as_ptr());
+        // NICHT ueberspringen und gruen melden. Ein Test, der besteht, ohne
+        // etwas geprueft zu haben, ist schlimmer als keiner: er stellt eine
+        // Zusicherung aus, die er nicht deckt. Genau deshalb traegt dieser
+        // Test ein #[ignore] — er laeuft nur, wenn ihn jemand ausdruecklich
+        // anfordert, und dann gibt er ein Urteil ab.
+        assert!(!node.is_null(),
+            "no iceoryx2 node — this test cannot verify anything in this \
+             environment. Do NOT read a pass as proof.");
+        let topic = CString::new("Anvil/test/oversize").unwrap();
+        let publisher = anvil_pub_create(node, topic.as_ptr(), 16);
+        assert!(!publisher.is_null(),
+            "no publisher — nothing could be verified here");
+
+        let fits = [0u8; 16];
+        let too_big = [0u8; 17];
+
+        assert_eq!(
+            anvil_publish(publisher, fits.as_ptr() as *const c_void, fits.len()),
+            0,
+            "a payload of exactly payload_size must be accepted"
+        );
+        assert_eq!(
+            anvil_publish(publisher, too_big.as_ptr() as *const c_void, too_big.len()),
+            -1,
+            "a payload larger than payload_size must be REJECTED — silently \
+             truncating it and reporting success is the bug this test guards"
+        );
+
+        anvil_pub_destroy(publisher);
+        anvil_node_destroy(node);
     }
 }
